@@ -110,10 +110,6 @@ static char *read_to_buf(char *path, int *len_out) {
 
 // PKCS #5 padding
 static char *pad(char *buf, int *len, int block_size) {
-    if (!(*len % BLOCK_SIZE)) {
-        return buf;
-    }
-
     int padded_len = *len + (block_size - (*len % block_size));
 
     char *padded;
