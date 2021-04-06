@@ -22,5 +22,5 @@ tests `t` for `./test-aes.sh t`:
  * `skittles.png`: A ~20KiB picture of the most important contribution
    the British have made to humanity
 
-Note that each of these will get PKCS#5 padded, so the output will be up
-to 16 bytes larger than the input.
+Note that each of these will get PKCS#5 padded, so the encrypted output
+will be up to 16 bytes larger than the input.

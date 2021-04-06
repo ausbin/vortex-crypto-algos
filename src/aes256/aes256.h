@@ -12,6 +12,7 @@
 
 #define BLOCK_SIZE (4 * Nb)
 
-extern void aes256(const uint8_t *, const uint8_t *, uint8_t *, int);
+extern void aes256enc(const uint8_t *, const uint8_t *, uint8_t *, int);
+extern void aes256dec(const uint8_t *, const uint8_t *, uint8_t *, int);
 
 #endif

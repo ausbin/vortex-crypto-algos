@@ -4,23 +4,40 @@
 #include <stdlib.h>
 #include "aes256.h"
 
+enum {
+    ENCRYPT,
+    DECRYPT
+};
+
 static char *read_to_buf(char *, int *);
 static char *pad(char *, int *, int);
 static int write_to_file(char *, char *, int);
 
 // Should behave equivalently to:
 // openssl aes-256-ecb -in skittles.png -out skittles.enc.expected -K $(hexdump -e '16/1 "%02x"' skittles.key)
+// (with -d for decryption)
 int main(int argc, char **argv) {
-    if (argc-1 != 3) {
-        fprintf(stderr, "usage: %s <infile> <keyfile> <outfile>\n", argv[0]);
+    if (argc-1 != 4) {
+        fprintf(stderr, "usage: %s enc|dec <infile> <keyfile> <outfile>\n", argv[0]);
         return 1;
     }
 
-    char *inpath, *keypath, *outpath,
+    char *encdec, *inpath, *keypath, *outpath,
          *inbuf, *keybuf, *outbuf;
-    inpath = argv[1];
-    keypath = argv[2];
-    outpath = argv[3];
+    encdec = argv[1];
+    inpath = argv[2];
+    keypath = argv[3];
+    outpath = argv[4];
+
+    int mode;
+    if (!strcmp(encdec, "enc")) {
+        mode = ENCRYPT;
+    } else if (!strcmp(encdec, "dec")) {
+        mode = DECRYPT;
+    } else {
+        fprintf(stderr, "please specify either enc or dec for first argument\n");
+        return 1;
+    }
 
     int in_len, key_len;
 
@@ -39,13 +56,15 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    char *padbuf;
-    if (!(padbuf = pad(inbuf, &in_len, BLOCK_SIZE))) {
-        free(inbuf);
-        free(keybuf);
-        return 1;
+    if (mode == ENCRYPT) {
+        char *padbuf;
+        if (!(padbuf = pad(inbuf, &in_len, BLOCK_SIZE))) {
+            free(inbuf);
+            free(keybuf);
+            return 1;
+        }
+        inbuf = padbuf;
     }
-    inbuf = padbuf;
 
     if (!(outbuf = calloc(1, in_len))) {
         perror("calloc");
@@ -56,11 +75,25 @@ int main(int argc, char **argv) {
 
     // overall, these casts are probably the safest we could do anywhere
     // for anything
-    aes256((uint8_t *)inbuf, (uint8_t *)keybuf, (uint8_t *)outbuf, in_len / BLOCK_SIZE);
+    int nblocks = in_len / BLOCK_SIZE;
+    if (mode == ENCRYPT) {
+        aes256enc((uint8_t *)inbuf, (uint8_t *)keybuf, (uint8_t *)outbuf, nblocks);
+    } else {
+        aes256dec((uint8_t *)inbuf, (uint8_t *)keybuf, (uint8_t *)outbuf, nblocks);
+    }
 
     free(inbuf);
     free(keybuf);
-    if (write_to_file(outpath, outbuf, in_len) < 0) {
+
+    int write_size;
+    if (mode == ENCRYPT) {
+        write_size = in_len;
+    } else if (in_len) { // DECRYPT
+        // Read the last padded PKCS#5 byte
+        write_size = in_len - outbuf[in_len - 1];
+    }
+
+    if (write_to_file(outpath, outbuf, write_size) < 0) {
         free(outbuf);
         return 1;
     }
