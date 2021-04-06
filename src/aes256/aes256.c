@@ -23,11 +23,16 @@ void aes256(const uint8_t *in, const uint8_t *key, uint8_t *out, int nblocks) {
 }
 
 static void aes256_key_exp(const uint32_t *key, uint32_t *round_keys) {
-    // Note this is little endian dependent
-    static const uint32_t rcon[] = {
-        0x00, 0x01, 0x02, 0x04,
-        0x08, 0x10, 0x20, 0x40,
+    // "Rcon[i] contains the values given by [x^{i-1},{00},{00},{00}]"
+    // attempt to construct this in an endianness-safe way. note that
+    // Rcon[0] is never accessed in the algorithm below
+    static const uint8_t rcon_bytes[] = {
+        [4] = 0x01, [8] = 0x02,
+        [12] = 0x04, [16] = 0x08,
+        [20] = 0x10, [24] = 0x20,
+        [28] = 0x40,
     };
+    const uint32_t *rcon = (uint32_t *)rcon_bytes;
     uint32_t temp;
     int i;
 

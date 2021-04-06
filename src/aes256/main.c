@@ -5,11 +5,11 @@
 #include "aes256.h"
 
 static char *read_to_buf(char *, int *);
+static char *pad(char *, int *, int);
 static int write_to_file(char *, char *, int);
 
-// key=$(hexdump -e '16/1 "%02x"' skittles.key )
-// openssl aes-256-ecb -in skittles.png -out skittles.enc.expected -K $key -nopad
-
+// Should behave equivalently to:
+// openssl aes-256-ecb -in skittles.png -out skittles.enc.expected -K $(hexdump -e '16/1 "%02x"' skittles.key)
 int main(int argc, char **argv) {
     if (argc-1 != 3) {
         fprintf(stderr, "usage: %s <infile> <keyfile> <outfile>\n", argv[0]);
@@ -24,20 +24,28 @@ int main(int argc, char **argv) {
 
     int in_len, key_len;
 
-    if (!(inbuf = read_to_buf(inpath, &in_len))) {
-        return 1;
-    }
     if (!(keybuf = read_to_buf(keypath, &key_len))) {
-        free(inbuf);
         return 1;
     }
 
     if (key_len != 32) {
         fprintf(stderr, "keyfile `%s' is not 256 bits!\n", keypath);
+        free(keybuf);
+        return 1;
+    }
+
+    if (!(inbuf = read_to_buf(inpath, &in_len))) {
+        free(keybuf);
+        return 1;
+    }
+
+    char *padbuf;
+    if (!(padbuf = pad(inbuf, &in_len, BLOCK_SIZE))) {
         free(inbuf);
         free(keybuf);
         return 1;
     }
+    inbuf = padbuf;
 
     if (!(outbuf = calloc(1, in_len))) {
         perror("calloc");
@@ -74,7 +82,7 @@ static char *read_to_buf(char *path, int *len_out) {
     errno = 0;
     while ((c = getc(f)) != EOF) {
         if (buf_len == buf_cap) {
-            buf_cap += 16;
+            buf_cap = (buf_cap + 1) * 2;
             char *new_buf;
             if (!(new_buf = realloc(buf, buf_cap))) {
                 perror("realloc");
@@ -94,13 +102,33 @@ static char *read_to_buf(char *path, int *len_out) {
         return NULL;
     }
 
-    if (buf_len < buf_cap) {
-        memset(buf + buf_len, 0, buf_cap - buf_len);
-    }
-    *len_out = buf_cap;
+    *len_out = buf_len;
 
     fclose(f);
     return buf;
+}
+
+// PKCS #5 padding
+static char *pad(char *buf, int *len, int block_size) {
+    if (!(*len % BLOCK_SIZE)) {
+        return buf;
+    }
+
+    int padded_len = *len + (block_size - (*len % block_size));
+
+    char *padded;
+    if (!(padded = realloc(buf, padded_len))) {
+        perror("realloc");
+        return NULL;
+    }
+
+    // PKCS #5 padding says to pad with bytes holding difference between
+    // padded and unpadded size
+    int fill = padded_len - *len;
+    memset(padded + *len, fill, padded_len - *len);
+
+    *len = padded_len;
+    return padded;
 }
 
 static int write_to_file(char *path, char *buf, int len) {
