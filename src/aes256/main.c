@@ -90,6 +90,8 @@ int main(int argc, char **argv) {
     } else if (in_len) { // DECRYPT
         // Read the last padded PKCS#5 byte
         write_size = in_len - outbuf[in_len - 1];
+    } else { // DECRYPT and input length == 0
+        write_size = 0;
     }
 
     if (write_to_file(outpath, outbuf, write_size) < 0) {
