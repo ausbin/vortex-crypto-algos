@@ -3,23 +3,27 @@ CFLAGS ?= -g -pedantic -pedantic -Wall -Werror -Wextra \
 		  -D_GNU_SOURCE -O0
 CC ?= gcc
 
+COMMON_DIR = src/common
+COMMON_OBJ = $(patsubst %.c,%.o,$(wildcard $(COMMON_DIR)/*.c))
+CFLAGS += -iquote $(COMMON_DIR)
+
 SHA_BIN = sha256
 SHA_DIR = src/$(SHA_BIN)
-SHA_OBJ = $(patsubst %.c,%.o,$(wildcard $(SHA_DIR)/*.c))
+SHA_OBJ = $(patsubst %.c,%.o,$(wildcard $(SHA_DIR)/*.c)) $(COMMON_OBJ)
 
 AES_BIN = aes256
 AES_DIR = src/$(AES_BIN)
-AES_OBJ = $(patsubst %.c,%.o,$(wildcard $(AES_DIR)/*.c))
+AES_OBJ = $(patsubst %.c,%.o,$(wildcard $(AES_DIR)/*.c)) $(COMMON_OBJ)
 
 ALL_BIN = $(SHA_BIN) $(AES_BIN)
-ALL_DEP = $(patsubst %.c,%.d,$(wildcard $(SHA_DIR)/*.c $(AES_DIR)/*.c))
-ALL_OBJ = $(patsubst %.c,%.o,$(wildcard $(SHA_DIR)/*.c $(AES_DIR)/*.c))
+ALL_DEP = $(patsubst %.c,%.d,$(wildcard $(SHA_DIR)/*.c $(AES_DIR)/*.c $(COMMON_DIR)/*.c))
+ALL_OBJ = $(patsubst %.c,%.o,$(wildcard $(SHA_DIR)/*.c $(AES_DIR)/*.c $(COMMON_DIR)/*.c))
 
 .PHONY: all clean
 
 all: $(SHA_BIN) $(AES_BIN)
 
--include $(ALL_DEP_FILES)
+-include $(ALL_DEP)
 
 %.o: %.c
 	$(CC) -MMD -c $(CFLAGS) $< -o $@

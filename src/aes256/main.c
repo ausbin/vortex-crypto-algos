@@ -1,15 +1,14 @@
-#include <errno.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "aes256.h"
+#include "common.h"
 
 enum {
     ENCRYPT,
     DECRYPT
 };
 
-static char *read_to_buf(char *, int *);
 static char *pad(char *, int *, int);
 static int write_to_file(char *, char *, int);
 
@@ -41,7 +40,7 @@ int main(int argc, char **argv) {
 
     int in_len, key_len;
 
-    if (!(keybuf = read_to_buf(keypath, &key_len))) {
+    if (read_to_buf(keypath, &keybuf, &key_len) < 0) {
         return 1;
     }
 
@@ -51,7 +50,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    if (!(inbuf = read_to_buf(inpath, &in_len))) {
+    if (read_to_buf(inpath, &inbuf, &in_len) < 0) {
         free(keybuf);
         return 1;
     }
@@ -100,45 +99,6 @@ int main(int argc, char **argv) {
 
     free(outbuf);
     return 0;
-}
-
-static char *read_to_buf(char *path, int *len_out) {
-    FILE *f;
-    if (!(f = fopen(path, "r"))) {
-        perror("fopen");
-        return NULL;
-    }
-
-    int buf_cap = 0, buf_len = 0;
-    char *buf = NULL;
-    int c;
-    errno = 0;
-    while ((c = getc(f)) != EOF) {
-        if (buf_len == buf_cap) {
-            buf_cap = (buf_cap + 1) * 2;
-            char *new_buf;
-            if (!(new_buf = realloc(buf, buf_cap))) {
-                perror("realloc");
-                free(buf);
-                fclose(f);
-            }
-            buf = new_buf;
-        }
-
-        buf[buf_len] = c;
-        buf_len++;
-    }
-    if (errno) {
-        perror("getc");
-        free(buf);
-        fclose(f);
-        return NULL;
-    }
-
-    *len_out = buf_len;
-
-    fclose(f);
-    return buf;
 }
 
 // PKCS #5 padding
