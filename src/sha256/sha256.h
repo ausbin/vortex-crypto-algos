@@ -47,6 +47,6 @@
 #define PADDED_SIZE_BYTES(data_bytes) ((data_bytes) + 1 + PADDING_BYTES(data_bytes) + 8)
 #define DIGEST_BYTES 32
 
-extern void sha256(uint8_t *, uint64_t, uint8_t *);
+extern void sha256(uint8_t *, uint32_t, uint8_t *);
 
 #endif

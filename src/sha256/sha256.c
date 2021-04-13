@@ -1,11 +1,10 @@
 #include <stdint.h>
-#include <string.h>
 #include "sha256.h"
 
 static const uint32_t K[64];
 static const uint32_t Hzero[8];
-static void pad_message(uint8_t *, uint64_t);
-static void sha256_hash(uint8_t *, uint64_t, uint8_t *);
+static void pad_message(uint8_t *, uint32_t);
+static void sha256_hash(uint8_t *, uint32_t, uint8_t *);
 static uint32_t rotr(int, uint32_t);
 static uint32_t ch(uint32_t, uint32_t, uint32_t);
 static uint32_t maj(uint32_t, uint32_t, uint32_t);
@@ -14,47 +13,55 @@ static uint32_t Sigma1(uint32_t);
 static uint32_t sigma0(uint32_t);
 static uint32_t sigma1(uint32_t);
 
-void sha256(uint8_t *buf, uint64_t n_bytes, uint8_t *digest_out) {
+void sha256(uint8_t *buf, uint32_t n_bytes, uint8_t *digest_out) {
     pad_message(buf, n_bytes);
-    uint64_t N = PADDED_SIZE_BYTES(n_bytes) / 64;
+    uint32_t N = PADDED_SIZE_BYTES(n_bytes) / 64;
     sha256_hash(buf, N, digest_out);
 }
 
-static void pad_message(uint8_t *buf, uint64_t n_bytes) {
+static void pad_message(uint8_t *buf, uint32_t n_bytes) {
     // Obligatory first padding byte (with highest-order bit set)
     *(buf + n_bytes) = 0x80;
 
-    uint64_t zero_bytes = PADDING_BYTES(n_bytes);
-    if (zero_bytes) {
-        memset(buf + n_bytes + 1, 0x00, zero_bytes);
+    uint32_t zero_bytes = PADDING_BYTES(n_bytes);
+    for (uint32_t i = 0; i < zero_bytes; i++) {
+        *(buf + n_bytes + 1 + i) = 0x00;
     }
 
     // CRITICAL: this is bits, not bytes!
-    uint64_t n_bits = n_bytes * 8;
+    // We need to multiply n_bytes by 8 to get the number of bits. So we
+    // effectively need to do n_bytes << 3. But also, this is a 64-bit
+    // field in memory. So break this field into two 32-bit words. To
+    // achieve this << 3, use the three highest-order bits of n_bytes as
+    // the three lowest-order bits in the high 32-bit word, and then use
+    // the 29 lowest-order bits of n_bytes as the 29 highest-order bits
+    // of the lower 32-bit word
+    uint32_t n_bits_hi = n_bytes >> 29;
+    uint32_t n_bits_lo = n_bytes << 3;
     uint8_t *l = buf + n_bytes + 1 + zero_bytes;
     // Need to store this as big endian
-    l[0] = (n_bits >> 56) & 0xff;
-    l[1] = (n_bits >> 48) & 0xff;
-    l[2] = (n_bits >> 40) & 0xff;
-    l[3] = (n_bits >> 32) & 0xff;
-    l[4] = (n_bits >> 24) & 0xff;
-    l[5] = (n_bits >> 16) & 0xff;
-    l[6] = (n_bits >> 8) & 0xff;
-    l[7] = n_bits & 0xff;
+    l[0] = (n_bits_hi >> 24) & 0xff;
+    l[1] = (n_bits_hi >> 16) & 0xff;
+    l[2] = (n_bits_hi >> 8) & 0xff;
+    l[3] = n_bits_hi & 0xff;
+    l[4] = (n_bits_lo >> 24) & 0xff;
+    l[5] = (n_bits_lo >> 16) & 0xff;
+    l[6] = (n_bits_lo >> 8) & 0xff;
+    l[7] = n_bits_lo & 0xff;
 }
 
-static inline uint32_t ijth_M(uint8_t *M, uint64_t i, int j) {
+static inline uint32_t ijth_M(uint8_t *M, uint32_t i, int j) {
     uint8_t *msg = M + 64*(i-1) + 4*j;
     return (msg[0] << 24) | (msg[1] << 16) | (msg[2] << 8) | msg[3];
 }
 
-static void sha256_hash(uint8_t *M, uint64_t N, uint8_t *digest_out) {
+static void sha256_hash(uint8_t *M, uint32_t N, uint8_t *digest_out) {
     uint32_t H[8];
     for (int i = 0; i < 8; i++) {
         H[i] = Hzero[i];
     }
 
-    for (uint64_t i = 1; i <= N; i++) {
+    for (uint32_t i = 1; i <= N; i++) {
         uint32_t W[64];
         for (int t = 0; t < 64; t++) {
             if (t <= 15) {
