@@ -2,7 +2,7 @@
 #include <string.h>
 #include "aes256.h"
 
-static void aes256_key_exp(const uint32_t *, uint32_t *);
+static void aes256_key_exp(const uint32_t *, uint32_t *, int);
 static void aes256_cipher(const uint8_t *, uint8_t *, const uint32_t *);
 static void aes256_inv_cipher(const uint8_t *, uint8_t *, const uint32_t *);
 static uint8_t s_box_replace(uint8_t);
@@ -20,7 +20,7 @@ static void inv_mix_columns(uint8_t *);
 void aes256enc(const uint8_t *in, const uint8_t *key, uint8_t *out, int nblocks) {
     uint32_t round_keys[Nb * (Nr + 1)];
 
-    aes256_key_exp((const uint32_t *)key, round_keys);
+    aes256_key_exp((const uint32_t *)key, round_keys, 0);
 
     for (int b = 0; b < nblocks; b++) {
         aes256_cipher(in + (Nb * 4 * b), out + (Nb * 4 * b), round_keys);
@@ -30,14 +30,15 @@ void aes256enc(const uint8_t *in, const uint8_t *key, uint8_t *out, int nblocks)
 void aes256dec(const uint8_t *in, const uint8_t *key, uint8_t *out, int nblocks) {
     uint32_t round_keys[Nb * (Nr + 1)];
 
-    aes256_key_exp((const uint32_t *)key, round_keys);
+    aes256_key_exp((const uint32_t *)key, round_keys, 1);
 
     for (int b = 0; b < nblocks; b++) {
         aes256_inv_cipher(in + (Nb * 4 * b), out + (Nb * 4 * b), round_keys);
     }
 }
 
-static void aes256_key_exp(const uint32_t *key, uint32_t *round_keys) {
+// Modified key schedule generation from Section 5.3.5 of the AES spec
+static void aes256_key_exp(const uint32_t *key, uint32_t *round_keys, int inv_mix_cols) {
     // "Rcon[i] contains the values given by [x^{i-1},{00},{00},{00}]"
     // attempt to construct this in an endianness-safe way. note that
     // Rcon[0] is never accessed in the algorithm below
@@ -64,6 +65,13 @@ static void aes256_key_exp(const uint32_t *key, uint32_t *round_keys) {
         }
         round_keys[i] = round_keys[i - Nk] ^ temp;
     }
+
+    // For equivalent inverse cipher. See Section 5.3.5 of AES spec
+    if (inv_mix_cols) {
+        for (int r = 1; r < Nr; r++) {
+            inv_mix_columns((uint8_t *)(round_keys + (Nb * r)));
+        }
+    }
 }
 
 static void aes256_cipher(const uint8_t *in, uint8_t *out, const uint32_t *round_keys) {
@@ -85,6 +93,7 @@ static void aes256_cipher(const uint8_t *in, uint8_t *out, const uint32_t *round
     memcpy(out, state, 4 * Nb);
 }
 
+// Equivalent inverse cipher from Section 5.3.5 of AES spec
 static void aes256_inv_cipher(const uint8_t *in, uint8_t *out, const uint32_t *round_keys) {
     uint8_t state[4 * Nb];
 
@@ -93,12 +102,12 @@ static void aes256_inv_cipher(const uint8_t *in, uint8_t *out, const uint32_t *r
     add_round_key(state, round_keys + (Nb * Nr));
 
     for (int round = Nr - 1; round >= 0; round--) {
-        inv_shift_rows(state);
         inv_sub_bytes(state);
-        add_round_key(state, round_keys + (Nb * round));
+        inv_shift_rows(state);
         if (round > 0) {
             inv_mix_columns(state);
         }
+        add_round_key(state, round_keys + (Nb * round));
     }
 
     memcpy(out, state, 4 * Nb);
