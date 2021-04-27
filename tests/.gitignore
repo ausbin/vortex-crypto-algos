@@ -1,4 +1,6 @@
 *.enc-cbc.*
 *.enc-ecb.*
+*.enc-ctr.*
 *.dec-cbc
 *.dec-ecb
+*.dec-ctr

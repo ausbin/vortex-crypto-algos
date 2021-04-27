@@ -9,9 +9,12 @@ typedef enum {
     DECRYPT_ECB,
     ENCRYPT_CBC,
     DECRYPT_CBC,
+    ENCRYPT_CTR,
+    DECRYPT_CTR,
 } aes_mode_t;
 
 static char *pad(char *, int *, int);
+static char *zeropad(char *, int *, int);
 static int write_to_file(char *, char *, int);
 
 // Should behave equivalently to:
@@ -19,7 +22,7 @@ static int write_to_file(char *, char *, int);
 // (with -d for decryption)
 int main(int argc, char **argv) {
     if (argc-1 != 5) {
-        fprintf(stderr, "usage: %s {enc,dec}-{ecb,cbc} <ivfile> <infile> <keyfile> <outfile>\n", argv[0]);
+        fprintf(stderr, "usage: %s {enc,dec}-{ecb,cbc,ctr} <ivfile> <infile> <keyfile> <outfile>\n", argv[0]);
         return 1;
     }
 
@@ -40,15 +43,21 @@ int main(int argc, char **argv) {
         mode = ENCRYPT_CBC;
     } else if (!strcmp(modestr, "dec-cbc")) {
         mode = DECRYPT_CBC;
+    } else if (!strcmp(modestr, "enc-ctr")) {
+        mode = ENCRYPT_CTR;
+    } else if (!strcmp(modestr, "dec-ctr")) {
+        mode = DECRYPT_CTR;
     } else {
         fprintf(stderr, "please specify either enc or dec for first argument\n");
         return 1;
     }
 
-    int encrypt = mode == ENCRYPT_ECB || mode == ENCRYPT_CBC;
-    int cbc = mode == ENCRYPT_CBC || mode == DECRYPT_CBC;
+    int pad_input = mode == ENCRYPT_ECB || mode == ENCRYPT_CBC;
+    int streaming = mode == ENCRYPT_CTR || mode == DECRYPT_CTR;
+    int need_iv = mode == ENCRYPT_CBC || mode == DECRYPT_CBC
+                  || mode == ENCRYPT_CTR || mode == DECRYPT_CTR;
 
-    int in_len, key_len, iv_len;
+    int in_len, key_len, iv_len, prepad_len;
 
     if (read_to_buf(keypath, &keybuf, &key_len) < 0) {
         return 1;
@@ -65,7 +74,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    if (cbc) {
+    if (need_iv) {
         if (read_to_buf(ivpath, &ivbuf, &iv_len) < 0) {
             free(keybuf);
             free(inbuf);
@@ -81,8 +90,9 @@ int main(int argc, char **argv) {
         ivbuf = NULL;
     }
 
-    if (encrypt) {
+    if (pad_input) {
         char *padbuf;
+        prepad_len = in_len;
         if (!(padbuf = pad(inbuf, &in_len, BLOCK_SIZE))) {
             free(inbuf);
             free(keybuf);
@@ -90,6 +100,19 @@ int main(int argc, char **argv) {
             return 1;
         }
         inbuf = padbuf;
+    } else if (streaming) {
+        char *zeropadbuf = NULL;
+        prepad_len = in_len;
+        // Subtle: with an empty input, inbuf is NULL
+        if (inbuf && !(zeropadbuf = zeropad(inbuf, &in_len, BLOCK_SIZE))) {
+            free(inbuf);
+            free(keybuf);
+            free(ivbuf);
+            return 1;
+        }
+        inbuf = zeropadbuf;
+    } else {
+        prepad_len = in_len;
     }
 
     if (!(outbuf = calloc(1, in_len))) {
@@ -121,6 +144,12 @@ int main(int argc, char **argv) {
             aes256_dec_cbc((uint8_t *)ivbuf, (uint8_t *)inbuf, (uint8_t *)keybuf,
                            (uint8_t *)outbuf, nblocks);
             break;
+
+        case ENCRYPT_CTR:
+        case DECRYPT_CTR:
+            aes256_ctr((uint8_t *)ivbuf, (uint8_t *)inbuf, (uint8_t *)keybuf,
+                       (uint8_t *)outbuf, nblocks);
+            break;
     }
 
     free(inbuf);
@@ -128,12 +157,14 @@ int main(int argc, char **argv) {
     free(ivbuf);
 
     int write_size;
-    if (encrypt) {
+    if (streaming) {
+        write_size = prepad_len;
+    } else if (pad_input) {
         write_size = in_len;
-    } else if (in_len) { // DECRYPT
+    } else if (in_len) { // decrypt
         // Read the last padded PKCS#5 byte
         write_size = in_len - outbuf[in_len - 1];
-    } else { // DECRYPT and input length == 0
+    } else { // decrypt and input length == 0
         write_size = 0;
     }
 
@@ -164,6 +195,27 @@ static char *pad(char *buf, int *len, int block_size) {
     *len = padded_len;
     return padded;
 }
+
+static char *zeropad(char *buf, int *len, int block_size) {
+    if (!(*len % block_size)) {
+        // Already in good shape
+        return buf;
+    }
+
+    int padded_len = *len + (block_size - (*len % block_size));
+
+    char *padded;
+    if (!(padded = realloc(buf, padded_len))) {
+        perror("realloc");
+        return NULL;
+    }
+
+    memset(padded + *len, 0, padded_len - *len);
+
+    *len = padded_len;
+    return padded;
+}
+
 
 static int write_to_file(char *path, char *buf, int len) {
     FILE *f;

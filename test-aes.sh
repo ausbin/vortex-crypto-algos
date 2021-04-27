@@ -1,7 +1,7 @@
 #!/bin/bash
 
 [[ $# -ne 2 ]] && {
-    printf 'usage: %s cbc|ecb <test>\n' "$0" >&2
+    printf 'usage: %s cbc|ecb|ctr <test>\n' "$0" >&2
     printf '\n' >&2
     printf 'try %s skittles.png\n' "$0" >&2
     exit 1
