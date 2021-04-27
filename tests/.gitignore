@@ -1,2 +1,4 @@
-*.enc.*
-*.dec
+*.enc-cbc.*
+*.enc-ecb.*
+*.dec-cbc
+*.dec-ecb

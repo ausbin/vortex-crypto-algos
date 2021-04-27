@@ -4,10 +4,12 @@
 #include "aes256.h"
 #include "common.h"
 
-enum {
-    ENCRYPT,
-    DECRYPT
-};
+typedef enum {
+    ENCRYPT_ECB,
+    DECRYPT_ECB,
+    ENCRYPT_CBC,
+    DECRYPT_CBC,
+} aes_mode_t;
 
 static char *pad(char *, int *, int);
 static int write_to_file(char *, char *, int);
@@ -16,29 +18,37 @@ static int write_to_file(char *, char *, int);
 // openssl aes-256-ecb -in skittles.png -out skittles.enc.expected -K $(hexdump -e '16/1 "%02x"' skittles.key)
 // (with -d for decryption)
 int main(int argc, char **argv) {
-    if (argc-1 != 4) {
-        fprintf(stderr, "usage: %s enc|dec <infile> <keyfile> <outfile>\n", argv[0]);
+    if (argc-1 != 5) {
+        fprintf(stderr, "usage: %s {enc,dec}-{ecb,cbc} <ivfile> <infile> <keyfile> <outfile>\n", argv[0]);
         return 1;
     }
 
-    char *encdec, *inpath, *keypath, *outpath,
-         *inbuf, *keybuf, *outbuf;
-    encdec = argv[1];
-    inpath = argv[2];
-    keypath = argv[3];
-    outpath = argv[4];
+    char *modestr, *ivpath, *inpath, *keypath, *outpath,
+         *ivbuf, *inbuf, *keybuf, *outbuf;
+    modestr = argv[1];
+    ivpath = argv[2];
+    inpath = argv[3];
+    keypath = argv[4];
+    outpath = argv[5];
 
-    int mode;
-    if (!strcmp(encdec, "enc")) {
-        mode = ENCRYPT;
-    } else if (!strcmp(encdec, "dec")) {
-        mode = DECRYPT;
+    aes_mode_t mode;
+    if (!strcmp(modestr, "enc-ecb")) {
+        mode = ENCRYPT_ECB;
+    } else if (!strcmp(modestr, "dec-ecb")) {
+        mode = DECRYPT_ECB;
+    } else if (!strcmp(modestr, "enc-cbc")) {
+        mode = ENCRYPT_CBC;
+    } else if (!strcmp(modestr, "dec-cbc")) {
+        mode = DECRYPT_CBC;
     } else {
         fprintf(stderr, "please specify either enc or dec for first argument\n");
         return 1;
     }
 
-    int in_len, key_len;
+    int encrypt = mode == ENCRYPT_ECB || mode == ENCRYPT_CBC;
+    int cbc = mode == ENCRYPT_CBC || mode == DECRYPT_CBC;
+
+    int in_len, key_len, iv_len;
 
     if (read_to_buf(keypath, &keybuf, &key_len) < 0) {
         return 1;
@@ -55,11 +65,28 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    if (mode == ENCRYPT) {
+    if (cbc) {
+        if (read_to_buf(ivpath, &ivbuf, &iv_len) < 0) {
+            free(keybuf);
+            free(inbuf);
+            return 1;
+        }
+
+        if (iv_len != BLOCK_SIZE) {
+            fprintf(stderr, "IV `%s' is not %d bytes!\n", ivpath, BLOCK_SIZE);
+            free(keybuf);
+            return 1;
+        }
+    } else {
+        ivbuf = NULL;
+    }
+
+    if (encrypt) {
         char *padbuf;
         if (!(padbuf = pad(inbuf, &in_len, BLOCK_SIZE))) {
             free(inbuf);
             free(keybuf);
+            free(ivbuf);
             return 1;
         }
         inbuf = padbuf;
@@ -69,23 +96,39 @@ int main(int argc, char **argv) {
         perror("calloc");
         free(inbuf);
         free(keybuf);
+        free(ivbuf);
         return 1;
     }
 
     // overall, these casts are probably the safest we could do anywhere
     // for anything
     int nblocks = in_len / BLOCK_SIZE;
-    if (mode == ENCRYPT) {
-        aes256enc((uint8_t *)inbuf, (uint8_t *)keybuf, (uint8_t *)outbuf, nblocks);
-    } else {
-        aes256dec((uint8_t *)inbuf, (uint8_t *)keybuf, (uint8_t *)outbuf, nblocks);
+    switch (mode) {
+        case ENCRYPT_ECB:
+            aes256_enc_ecb((uint8_t *)inbuf, (uint8_t *)keybuf, (uint8_t *)outbuf, nblocks);
+            break;
+
+        case DECRYPT_ECB:
+            aes256_dec_ecb((uint8_t *)inbuf, (uint8_t *)keybuf, (uint8_t *)outbuf, nblocks);
+            break;
+
+        case ENCRYPT_CBC:
+            aes256_enc_cbc((uint8_t *)ivbuf, (uint8_t *)inbuf, (uint8_t *)keybuf,
+                           (uint8_t *)outbuf, nblocks);
+            break;
+
+        case DECRYPT_CBC:
+            aes256_dec_cbc((uint8_t *)ivbuf, (uint8_t *)inbuf, (uint8_t *)keybuf,
+                           (uint8_t *)outbuf, nblocks);
+            break;
     }
 
     free(inbuf);
     free(keybuf);
+    free(ivbuf);
 
     int write_size;
-    if (mode == ENCRYPT) {
+    if (encrypt) {
         write_size = in_len;
     } else if (in_len) { // DECRYPT
         // Read the last padded PKCS#5 byte
