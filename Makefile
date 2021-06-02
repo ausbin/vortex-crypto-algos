@@ -1,6 +1,7 @@
+AES_IMPL ?= TABLE
 CFLAGS ?= -g -pedantic -pedantic -Wall -Werror -Wextra \
 		  -Wstrict-prototypes -Wold-style-definition -Iinclude -std=c99 \
-		  -D_GNU_SOURCE -O0
+		  -D_GNU_SOURCE -O0 -DAES_$(AES_IMPL)
 CC ?= gcc
 
 COMMON_DIR = src/common
@@ -19,7 +20,7 @@ ALL_BIN = $(SHA_BIN) $(AES_BIN)
 ALL_DEP = $(patsubst %.c,%.d,$(wildcard $(SHA_DIR)/*.c $(AES_DIR)/*.c $(COMMON_DIR)/*.c))
 ALL_OBJ = $(patsubst %.c,%.o,$(wildcard $(SHA_DIR)/*.c $(AES_DIR)/*.c $(COMMON_DIR)/*.c))
 
-.PHONY: all clean
+.PHONY: all clean tablegen
 
 all: $(SHA_BIN) $(AES_BIN)
 
@@ -33,6 +34,9 @@ $(SHA_BIN): $(SHA_OBJ)
 
 $(AES_BIN): $(AES_OBJ)
 	$(CC) $(CFLAGS) $^ -o $@
+
+tablegen: $(AES_BIN)
+	./$(AES_BIN) tablegen >$(AES_DIR)/tables.c
 
 clean:
 	rm -rvf $(ALL_BIN) $(ALL_OBJ) $(ALL_DEP)

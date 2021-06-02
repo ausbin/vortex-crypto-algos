@@ -13,6 +13,7 @@ typedef enum {
     DECRYPT_CTR,
 } aes_mode_t;
 
+static int tablegen(void);
 static char *pad(char *, int *, int);
 static char *zeropad(char *, int *, int);
 static int write_to_file(char *, char *, int);
@@ -21,9 +22,22 @@ static int write_to_file(char *, char *, int);
 // openssl aes-256-ecb -in skittles.png -out skittles.enc.expected -K $(hexdump -e '16/1 "%02x"' skittles.key)
 // (with -d for decryption)
 int main(int argc, char **argv) {
-    if (argc-1 != 5) {
-        fprintf(stderr, "usage: %s {enc,dec}-{ecb,cbc,ctr} <ivfile> <infile> <keyfile> <outfile>\n", argv[0]);
+    int do_tablegen = 0;
+    int args_ok = 0;
+    if (argc-1 >= 1) {
+        do_tablegen = !strcmp(argv[1], "tablegen");
+        args_ok = ((do_tablegen && argc-1 == 1) || (!do_tablegen && argc-1 == 5));
+    }
+
+    if (!args_ok) {
+        fprintf(stderr, "usage: %s {enc,dec}-{ecb,cbc,ctr} <ivfile> <infile> <keyfile> <outfile>\n"
+                        "       %s tablegen\n",
+                argv[0], argv[0]);
         return 1;
+    }
+
+    if (do_tablegen) {
+        return tablegen();
     }
 
     char *modestr, *ivpath, *inpath, *keypath, *outpath,
@@ -48,7 +62,7 @@ int main(int argc, char **argv) {
     } else if (!strcmp(modestr, "dec-ctr")) {
         mode = DECRYPT_CTR;
     } else {
-        fprintf(stderr, "please specify either enc or dec for first argument\n");
+        fprintf(stderr, "please specify enc, dec, or tablegen for first argument\n");
         return 1;
     }
 
@@ -174,6 +188,33 @@ int main(int argc, char **argv) {
     }
 
     free(outbuf);
+    return 0;
+}
+
+static int tablegen(void) {
+    printf("#include \"tables.h\"\n\n");
+
+    for (int dec = 0; dec < 2; dec++) {
+        for (int table_num = 0; table_num < 4; table_num++) {
+            printf("const uint8_t T%d_%s[256][4] = {\n", table_num, dec? "inv" : "fwd");
+
+            for (int byte = 0; byte < 256; byte++) {
+                uint8_t entries[4];
+                if (dec) {
+                    get_inv_table_entry(table_num, byte, entries);
+                } else {
+                    get_fwd_table_entry(table_num, byte, entries);
+                }
+                printf("%s{0x%02x, 0x%02x, 0x%02x, 0x%02x},%s",
+                       (byte % 4)? "" : "    ",
+                       entries[0], entries[1], entries[2], entries[3],
+                       ((byte + 1) % 4)? " " : "\n");
+            }
+
+            printf("};\n\n");
+        }
+    }
+
     return 0;
 }
 
