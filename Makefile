@@ -1,7 +1,8 @@
-AES_IMPL ?= TABLE
+AES_IMPL ?= TABLE,MONOTABLE
+comma = ,
 CFLAGS ?= -g -pedantic -pedantic -Wall -Werror -Wextra \
 		  -Wstrict-prototypes -Wold-style-definition -Iinclude -std=c99 \
-		  -D_GNU_SOURCE -O0 -DAES_$(AES_IMPL)
+		  -D_GNU_SOURCE -O0 -DAES_$(subst $(comma), -DAES_,$(AES_IMPL))
 CC ?= gcc
 
 COMMON_DIR = src/common

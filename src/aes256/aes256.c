@@ -1,5 +1,5 @@
+#include <stddef.h>
 #include <stdint.h>
-#include <string.h>
 #include "aes256.h"
 
 #ifdef AES_TABLE
@@ -213,12 +213,22 @@ static void aes256_cipher(const uint8_t *xor_before, const uint8_t *xor_after,
         for (int j = 0; j < Nb; j++) {
             const uint8_t *t0, *t1, *t2, *t3;
             t0 = T0_fwd[state[4*j]];
+# ifdef AES_MONOTABLE
+            t1 = T0_fwd[state[4*((j + 1) % Nb) + 1]];
+            t2 = T0_fwd[state[4*((j + 2) % Nb) + 2]];
+            t3 = T0_fwd[state[4*((j + 3) % Nb) + 3]];
+# else
             t1 = T1_fwd[state[4*((j + 1) % Nb) + 1]];
             t2 = T2_fwd[state[4*((j + 2) % Nb) + 2]];
             t3 = T3_fwd[state[4*((j + 3) % Nb) + 3]];
+# endif
 
             for (int k = 0; k < 4; k++) {
+# ifdef AES_MONOTABLE
+                new_state[4*j + k] = t0[k] ^ t1[(k + 3) % 4] ^ t2[(k + 2) % 4] ^ t3[(k + 1) % 4];
+# else
                 new_state[4*j + k] = t0[k] ^ t1[k] ^ t2[k] ^ t3[k];
+# endif
             }
         }
 
@@ -263,12 +273,22 @@ static void aes256_inv_cipher(const uint8_t *xor_after, const uint8_t *in,
         for (int j = 0; j < Nb; j++) {
             const uint8_t *t0, *t1, *t2, *t3;
             t0 = T0_inv[state[4*j]];
+# ifdef AES_MONOTABLE
+            t1 = T0_inv[state[4*((j + 3) % Nb) + 1]];
+            t2 = T0_inv[state[4*((j + 2) % Nb) + 2]];
+            t3 = T0_inv[state[4*((j + 1) % Nb) + 3]];
+# else
             t1 = T1_inv[state[4*((j + 3) % Nb) + 1]];
             t2 = T2_inv[state[4*((j + 2) % Nb) + 2]];
             t3 = T3_inv[state[4*((j + 1) % Nb) + 3]];
+# endif
 
             for (int k = 0; k < 4; k++) {
+# ifdef AES_MONOTABLE
+                new_state[4*j + k] = t0[k] ^ t1[(k + 3) % 4] ^ t2[(k + 2) % 4] ^ t3[(k + 1) % 4];
+# else
                 new_state[4*j + k] = t0[k] ^ t1[k] ^ t2[k] ^ t3[k];
+# endif
             }
         }
 
