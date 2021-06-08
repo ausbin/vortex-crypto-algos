@@ -15,6 +15,22 @@ The specific form of AES implemented here is:
    block-aligned test data
  * [Cipher modes][1]: ECB, CBC, CTR
 
+The initial implementation is based on a naïve reading of [the AES
+specification][3], but I subsequently implemented the T-table approach
+described in Section 4.2.1 of [*The Design of Rijndael* (2002)][2]. You
+can swap between implementations by changing the `$(AES_IMPL)` value in
+the Makefile to one of the following:
+
+ * `TABLE`: Use separate tables T0, T1, T2, T3
+ * `TABLE,MONOTABLE`: Use only T0, rotating the result to get T1, T2, T3
+ * `ORIGINAL`: This is the original naïve implementation. The resulting
+   `AES_ORIGINAL` macro isn't actually used; the important thing is the
+   absence of `AES_TABLE`
+
+Running `make tablegen` will regenerate the C file for the tables,
+`src/aes256/tables.c`. Note it will not include the preprocessor
+directives I have added by hand after generation, sorry
+
 SHA-256
 -------
 
@@ -46,3 +62,5 @@ vectors were generated similarly, and are used as the IV for CBC and the
 initial counter for CTR.
 
 [1]: https://en.wikipedia.org/wiki/Block_cipher_mode_of_operation#Confidentiality_only_modes
+[2]: https://link.springer.com/book/10.1007%2F978-3-662-04722-4
+[3]: https://www.nist.gov/publications/advanced-encryption-standard-aes
